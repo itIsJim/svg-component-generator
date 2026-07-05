@@ -21,6 +21,11 @@ export function buildPreviewDoc(componentHtml: string, componentCss: string): st
   svg { max-width: 100%; height: auto; }
   .__hover { outline: 1.5px dashed #38bdf8 !important; outline-offset: 2px; cursor: crosshair; }
   .__selected { outline: 1.5px solid #f472b6 !important; outline-offset: 2px; }
+  .__linked {
+    outline: 2px solid #0ea5e9 !important;
+    outline-offset: 3px;
+    filter: drop-shadow(0 0 4px #38bdf8);
+  }
   #tip {
     position: fixed; pointer-events: none; z-index: 10; display: none;
     background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
@@ -40,22 +45,38 @@ ${componentHtml}
   var stage = document.getElementById("stage");
   var tip = document.getElementById("tip");
   var selected = null;
+  var lastHoverSlug = null;
+
+  function reportHover(layer) {
+    var el = layer ? layer.getAttribute("data-el") : null;
+    if (el === lastHoverSlug) return;
+    lastHoverSlug = el;
+    parent.postMessage(
+      { type: "svg-preview:hover", el: el, name: layer ? labelOf(layer) : null },
+      "*"
+    );
+  }
 
   function layerOf(el) {
     while (el && el !== stage) {
-      if (el.getAttribute && el.getAttribute("data-name")) return el;
+      if (el.getAttribute && el.getAttribute("data-el")) return el;
       el = el.parentNode;
     }
     return null;
+  }
+
+  function labelOf(layer) {
+    return layer.getAttribute("data-name") || "<" + layer.tagName.toLowerCase() + ">";
   }
 
   document.addEventListener("mousemove", function (e) {
     var prev = document.querySelector(".__hover");
     if (prev) prev.classList.remove("__hover");
     var layer = layerOf(e.target);
+    reportHover(layer);
     if (!layer) { tip.style.display = "none"; return; }
     layer.classList.add("__hover");
-    tip.textContent = layer.getAttribute("data-name");
+    tip.textContent = labelOf(layer);
     tip.style.display = "block";
     tip.style.left = Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + "px";
     tip.style.top = (e.clientY + 14) + "px";
@@ -65,6 +86,7 @@ ${componentHtml}
     tip.style.display = "none";
     var prev = document.querySelector(".__hover");
     if (prev) prev.classList.remove("__hover");
+    reportHover(null);
   });
 
   document.addEventListener("click", function (e) {
@@ -75,7 +97,8 @@ ${componentHtml}
     parent.postMessage(
       {
         type: "svg-preview:select",
-        name: layer ? layer.getAttribute("data-name") : null,
+        name: layer ? labelOf(layer) : null,
+        el: layer ? layer.getAttribute("data-el") : null,
         tag: layer ? layer.tagName.toLowerCase() : null,
       },
       "*"
@@ -88,6 +111,14 @@ ${componentHtml}
       stage.style.transform = "scale(" + data.value + ")";
     } else if (data.type === "svg-preview:fg") {
       stage.style.color = data.value;
+    } else if (data.type === "svg-preview:highlight") {
+      // Driven by hovering the generated code in the app.
+      var linked = document.querySelector(".__linked");
+      if (linked) linked.classList.remove("__linked");
+      if (data.el) {
+        var target = document.querySelector('[data-el="' + data.el + '"]');
+        if (target) target.classList.add("__linked");
+      }
     }
   });
 })();

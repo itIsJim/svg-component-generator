@@ -97,8 +97,9 @@ export function serialize(
     parts.push(`${jsx ? "className" : "class"}="${escapeAttr(node.classes.join(" "))}"`);
   }
   if (node.dataSlot) parts.push(`data-slot="${escapeAttr(node.dataSlot)}"`);
-  if (opts.addDataNames && node.name && !node.isDef) {
-    parts.push(`data-name="${escapeAttr(node.name)}"`);
+  if (opts.addDataNames && !node.isDef) {
+    if (node.name) parts.push(`data-name="${escapeAttr(node.name)}"`);
+    if (node.elKey) parts.push(`data-el="${escapeAttr(node.elKey)}"`);
   }
 
   for (const [name, value] of node.attrs) {

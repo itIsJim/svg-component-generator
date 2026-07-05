@@ -1,25 +1,131 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GeneratedFile } from "@/lib/generate";
+import { buildLineMap } from "@/lib/linemap";
 
 const MAX_RENDERED_CHARS = 150_000;
+const LINE_HEIGHT = 18; // px — enforced via leading-[18px] on the <pre>
+const PRE_PADDING = 16; // px — p-4
 
-export function CodePanel({ files }: { files: GeneratedFile[] }) {
+export interface JumpTarget {
+  slug: string | null;
+  /** Bumped on every click so repeated clicks on the same layer re-scroll. */
+  tick: number;
+}
+
+interface CodePanelProps {
+  files: GeneratedFile[];
+  layers: { slug: string; name: string }[];
+  /** Fired with the layer slug under the cursor (null when none). */
+  onHoverLayer: (slug: string | null) => void;
+  /** Layer name to show in the toolbar chip (preview hover). */
+  chipSlug?: string | null;
+  /** Scroll-and-highlight request (preview click). */
+  jump?: JumpTarget | null;
+}
+
+export function CodePanel({
+  files,
+  layers,
+  onHoverLayer,
+  chipSlug = null,
+  jump = null,
+}: CodePanelProps) {
   // The parent remounts this panel (via key) when framework/styling change,
   // so `active` only needs clamping for edits that shrink the file list.
   const [active, setActive] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [hoverLine, setHoverLine] = useState<number | null>(null);
+  const preRef = useRef<HTMLPreElement>(null);
+  const lastSlug = useRef<string | null>(null);
 
   const file = files[Math.min(active, files.length - 1)];
-  if (!file) return null;
+  const code = file?.code ?? "";
 
   // Rendering megabytes of text into the DOM freezes the tab; cap the view.
   // Copy always uses the full file.
-  const truncated = file.code.length > MAX_RENDERED_CHARS;
+  const truncated = code.length > MAX_RENDERED_CHARS;
   const shown = truncated
-    ? file.code.slice(0, file.code.lastIndexOf("\n", MAX_RENDERED_CHARS))
-    : file.code;
+    ? code.slice(0, code.lastIndexOf("\n", MAX_RENDERED_CHARS))
+    : code;
+
+  const slugs = useMemo(() => layers.map((l) => l.slug), [layers]);
+  const nameBySlug = useMemo(
+    () => new Map(layers.map((l) => [l.slug, l.name])),
+    [layers]
+  );
+  const lineMap = useMemo(() => buildLineMap(shown, slugs), [shown, slugs]);
+
+  // Contiguous line ranges for the layer clicked in the preview.
+  const highlightRanges = useMemo(() => {
+    if (!jump?.slug) return [];
+    const ranges: [number, number][] = [];
+    for (let i = 0; i < lineMap.length; i++) {
+      if (lineMap[i] !== jump.slug) continue;
+      const last = ranges[ranges.length - 1];
+      if (last && last[1] === i - 1) last[1] = i;
+      else ranges.push([i, i]);
+    }
+    return ranges;
+  }, [jump, lineMap]);
+
+  // Clicking a layer in the artwork jumps the code to its first occurrence.
+  useEffect(() => {
+    if (!jump?.slug || highlightRanges.length === 0) return;
+    const pre = preRef.current;
+    if (!pre) return;
+    const top = PRE_PADDING + highlightRanges[0][0] * LINE_HEIGHT;
+    pre.scrollTo({ top: Math.max(0, top - pre.clientHeight / 3), behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump]);
+
+  if (!file) return null;
+
+  // Element keys are either a layer slug or "<scope>/<tag>~<n>" for unnamed
+  // elements; render the latter as e.g. "<path> 3 · CTA Button".
+  const labelFor = (key: string): string => {
+    const named = nameBySlug.get(key);
+    if (named) return named;
+    const m = key.match(/^(.+)\/([a-zA-Z0-9-]+)~(\d+)$/);
+    if (!m) return key;
+    const scope = m[1] === "~root" ? "root" : nameBySlug.get(m[1]) ?? m[1];
+    return `<${m[2]}> ${Number(m[3]) + 1} · ${scope}`;
+  };
+
+  const hoverSlug = hoverLine !== null ? lineMap[hoverLine] ?? null : null;
+  const hoverName = hoverSlug
+    ? labelFor(hoverSlug)
+    : chipSlug
+      ? labelFor(chipSlug)
+      : null;
+
+  const emitHover = (slug: string | null) => {
+    if (slug !== lastSlug.current) {
+      lastSlug.current = slug;
+      onHoverLayer(slug);
+    }
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    const pre = preRef.current;
+    if (!pre) return;
+    const rect = pre.getBoundingClientRect();
+    const y = e.clientY - rect.top + pre.scrollTop - PRE_PADDING;
+    const line = Math.floor(y / LINE_HEIGHT);
+    if (line >= 0 && line < lineMap.length) {
+      setHoverLine(line);
+      emitHover(lineMap[line]);
+    } else {
+      setHoverLine(null);
+      emitHover(null);
+    }
+  };
+
+  const onMouseLeave = () => {
+    setHoverLine(null);
+    emitHover(null);
+  };
 
   const copy = async () => {
     try {
@@ -49,6 +155,11 @@ export function CodePanel({ files }: { files: GeneratedFile[] }) {
             {f.name}
           </button>
         ))}
+        {hoverName && (
+          <span className="ml-1 truncate rounded bg-sky-100 px-2 py-0.5 font-mono text-[11px] text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+            ◈ {hoverName}
+          </span>
+        )}
         <button
           type="button"
           onClick={copy}
@@ -68,8 +179,31 @@ export function CodePanel({ files }: { files: GeneratedFile[] }) {
           file.
         </div>
       )}
-      <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
-        <code>{shown}</code>
+      <pre
+        ref={preRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        className="relative min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-[18px] text-neutral-800 dark:text-neutral-200"
+      >
+        {hoverLine !== null && hoverSlug && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 right-0 min-w-full bg-sky-100/70 dark:bg-sky-400/10"
+            style={{ top: PRE_PADDING + hoverLine * LINE_HEIGHT, height: LINE_HEIGHT }}
+          />
+        )}
+        {highlightRanges.map(([start, end]) => (
+          <div
+            key={`${start}-${end}`}
+            aria-hidden
+            className="pointer-events-none absolute left-0 right-0 min-w-full border-l-2 border-sky-500 bg-sky-200/60 dark:bg-sky-400/20"
+            style={{
+              top: PRE_PADDING + start * LINE_HEIGHT,
+              height: (end - start + 1) * LINE_HEIGHT,
+            }}
+          />
+        ))}
+        <code className="relative">{shown}</code>
       </pre>
     </div>
   );

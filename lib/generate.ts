@@ -1,5 +1,5 @@
 import { decorate, Framework, Styling } from "./decorate";
-import { parseSvg } from "./model";
+import { IRNode, parseSvg } from "./model";
 import { kebab, pascal } from "./naming";
 import { emitAngular } from "./emit/angular";
 import { emitReact } from "./emit/react";
@@ -17,6 +17,8 @@ export interface GeneratedFile {
 export interface GenerateResult {
   componentName: string;
   files: GeneratedFile[];
+  /** Named layers in document order, for code <-> preview linking. */
+  layers: { slug: string; name: string }[];
   /** Static markup of the component, used by the sandboxed live preview. */
   previewHtml: string;
   /** CSS that styles the preview exactly like the generated code would. */
@@ -92,9 +94,17 @@ export function generate(
     : dec.root;
   const previewHtml = serialize(previewRoot, "", { mode: "html", addDataNames: true });
 
+  const layers: { slug: string; name: string }[] = [];
+  const collectLayers = (node: IRNode): void => {
+    if (node.slug && node.name) layers.push({ slug: node.slug, name: node.name });
+    node.children.forEach(collectLayers);
+  };
+  collectLayers(model.root);
+
   return {
     componentName,
     files,
+    layers,
     previewHtml,
     previewCss: dec.previewCss,
     warnings,

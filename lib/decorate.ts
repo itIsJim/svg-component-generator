@@ -8,6 +8,14 @@ export interface DecNode {
   tag: string;
   name: string | null;
   slug: string | null;
+  /**
+   * Stable element identity for code <-> preview linking. Named layers use
+   * their slug; unnamed elements get "<scope>/<tag>~<n>" where scope is the
+   * nearest named ancestor and n counts same-tag occurrences inside it. The
+   * line-map scanner (lib/linemap.ts) derives the same keys from the
+   * generated code, so both sides always agree.
+   */
+  elKey: string | null;
   /** Final class list (layer slug first, then utility classes). */
   classes: string[];
   /** data-slot attribute for headless output. */
@@ -262,8 +270,29 @@ export function decorate(model: SvgModel, styling: Styling, componentSlug: strin
     }
   }
 
-  const walk = (node: IRNode, parentRule: Rule | null): DecNode => {
+  interface ElScope {
+    slug: string;
+    counters: Map<string, number>;
+  }
+
+  const walk = (node: IRNode, parentRule: Rule | null, scope: ElScope): DecNode => {
     const isRoot = node.depth === 0;
+
+    let elKey: string | null = null;
+    let childScope = scope;
+    if (!node.isDef) {
+      // The root <svg> always takes the counter path: in scss mode it carries
+      // the component class, which the line scanner must not mistake for a
+      // layer slug — both sides key it as "~root/svg~0".
+      if (node.slug && !isRoot) {
+        elKey = node.slug;
+        childScope = { slug: node.slug, counters: new Map() };
+      } else {
+        const n = scope.counters.get(node.tag) ?? 0;
+        scope.counters.set(node.tag, n + 1);
+        elKey = `${scope.slug}/${node.tag}~${n}`;
+      }
+    }
     const classes: string[] = [];
     let dataSlot: string | null = null;
     let attrs = node.attrs;
@@ -320,10 +349,11 @@ export function decorate(model: SvgModel, styling: Styling, componentSlug: strin
       tag: node.tag,
       name: node.name,
       slug: node.slug,
+      elKey,
       classes,
       dataSlot,
       attrs,
-      children: node.children.map((child) => walk(child, rule)),
+      children: node.children.map((child) => walk(child, rule, childScope)),
       text: node.text,
       isDef: node.isDef,
       depth: node.depth,
@@ -334,7 +364,10 @@ export function decorate(model: SvgModel, styling: Styling, componentSlug: strin
   // For scss mode the root rule is created inside walk(); track it via a
   // sentinel parent so we can retrieve it afterwards.
   const sentinel: Rule = { selector: "", decls: [], children: [] };
-  const root = walk(model.root, styling === "scss" ? sentinel : null);
+  const root = walk(model.root, styling === "scss" ? sentinel : null, {
+    slug: "~root",
+    counters: new Map(),
+  });
 
   let scss = "";
   let previewCss = "";

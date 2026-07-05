@@ -16,11 +16,29 @@ interface SelectedLayer {
   tag: string;
 }
 
-export function PreviewPanel({ html, css }: { html: string; css: string }) {
+interface PreviewPanelProps {
+  html: string;
+  css: string;
+  /** Layer slug to outline (driven by hovering the generated code). */
+  highlight?: string | null;
+  /** Fired with the layer slug under the cursor inside the preview. */
+  onHoverLayer?: (slug: string | null) => void;
+  /** Fired with the layer slug when a layer is clicked in the preview. */
+  onSelectLayer?: (slug: string | null) => void;
+}
+
+export function PreviewPanel({
+  html,
+  css,
+  highlight = null,
+  onHoverLayer,
+  onSelectLayer,
+}: PreviewPanelProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [zoom, setZoom] = useState(1);
   const [bg, setBg] = useState<Background>("grid");
   const [selected, setSelected] = useState<SelectedLayer | null>(null);
+  const highlightRef = useRef<string | null>(null);
 
   const doc = useMemo(() => buildPreviewDoc(html, css), [html, css]);
 
@@ -31,6 +49,7 @@ export function PreviewPanel({ html, css }: { html: string; css: string }) {
   const syncFrame = (background: Background, scale: number) => {
     post({ type: "svg-preview:zoom", value: scale });
     post({ type: "svg-preview:fg", value: background === "dark" ? "#e5e7eb" : "#0f172a" });
+    post({ type: "svg-preview:highlight", el: highlightRef.current });
   };
 
   useEffect(() => {
@@ -39,9 +58,25 @@ export function PreviewPanel({ html, css }: { html: string; css: string }) {
   }, [bg, zoom]);
 
   useEffect(() => {
+    highlightRef.current = highlight;
+    post({ type: "svg-preview:highlight", el: highlight });
+  }, [highlight]);
+
+  const onHoverRef = useRef(onHoverLayer);
+  const onSelectRef = useRef(onSelectLayer);
+  useEffect(() => {
+    onHoverRef.current = onHoverLayer;
+    onSelectRef.current = onSelectLayer;
+  }, [onHoverLayer, onSelectLayer]);
+
+  useEffect(() => {
     const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
       if (e.data?.type === "svg-preview:select") {
         setSelected(e.data.name ? { name: e.data.name, tag: e.data.tag } : null);
+        onSelectRef.current?.(e.data.el ?? null);
+      } else if (e.data?.type === "svg-preview:hover") {
+        onHoverRef.current?.(e.data.el ?? null);
       }
     };
     window.addEventListener("message", onMessage);
