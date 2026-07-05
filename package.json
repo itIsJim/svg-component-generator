@@ -1,5 +1,5 @@
 {
-  "name": "lula-figma-code-generator",
+  "name": "svg-to-components",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -22,5 +22,26 @@
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "description": "Turn design-tool SVG exports into structured React/Vue/Angular components with Tailwind, SCSS or headless styling — with a live interactive preview.",
+  "license": "MIT",
+  "author": "Jim Mao (itIsJim)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itIsJim/svg-component-generator.git"
+  },
+  "homepage": "https://github.com/itIsJim/svg-component-generator#readme",
+  "bugs": {
+    "url": "https://github.com/itIsJim/svg-component-generator/issues"
+  },
+  "keywords": [
+    "svg",
+    "code-generator",
+    "react",
+    "vue",
+    "angular",
+    "tailwind",
+    "scss",
+    "design-to-code"
+  ]
 }

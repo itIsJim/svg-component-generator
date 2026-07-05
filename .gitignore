@@ -43,3 +43,6 @@ next-env.d.ts
 # Local-only AI agent instruction files (not for publication)
 AGENTS.md
 CLAUDE.md
+
+# Local out-of-sample test fixtures
+/tests/
