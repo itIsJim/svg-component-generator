@@ -10,16 +10,6 @@ Paste (or drag & drop) an exported SVG, pick a framework and a styling mode, cop
 
 > **Live demo:** _add your Vercel URL here after deploying_
 
-![SVG → Components — code view](docs/screenshot-code.png)
-
-<details>
-<summary>More screenshots (live preview & dark mode)</summary>
-
-![Live interactive preview](docs/screenshot-preview.png)
-![Dark mode](docs/screenshot-dark.png)
-
-</details>
-
 ## Why
 
 Design tools export flat SVG markup. Dropping that straight into a codebase gives you an unmaintainable blob: no props, no styling layer, no structure. This tool converts it into an idiomatic component — parametrized, themed, and named after your layers.
@@ -36,7 +26,7 @@ Design tools export flat SVG markup. Dropping that straight into a codebase give
   - **SCSS** — a nested stylesheet mirroring the layer hierarchy, with distinct colors hoisted into `$color-N` design tokens.
   - **Headless (shadcn-style)** — unstyled structure with `data-slot` attributes; single-color artwork becomes `currentColor` so you style it with CSS `color`.
 - **Structure-aware parsing** — layer names are read from `id` attributes; ids referenced by `url(#…)` (gradients, masks, clip paths) and everything inside `<defs>` are preserved untouched. Substantial anonymous groups are auto-named so structure survives exports without ids.
-- **Live interactive preview** — a sandboxed, dependency-free iframe renders exactly what the generated code renders. Hover to highlight layers, click to select, zoom, switch light/dark/checkerboard backgrounds.
+- **Always-visible live preview with code linking** — a sandboxed, dependency-free iframe renders exactly what the generated code renders, docked below the code. **Hover any line of generated code and the matching part of the artwork lights up** (and vice versa: hover the artwork to see layer names) — great for checking that your layer names map to the right things. Zoom and light/dark/checkerboard backgrounds included.
 - **Fully client-side** — your SVG never leaves the browser; the app builds to static pages.
 - **Zero-dependency engine** — the parser and generators in `lib/` have no runtime dependencies and can be reused outside the app.
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { CodePanel } from "@/components/CodePanel";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { CodePanel, JumpTarget } from "@/components/CodePanel";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { Segmented } from "@/components/Segmented";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -28,8 +28,51 @@ export default function Home() {
   const [framework, setFramework] = useState<Framework>("react");
   const [styling, setStyling] = useState<Styling>("tailwind");
   const [nameOverride, setNameOverride] = useState("");
-  const [tab, setTab] = useState<"code" | "preview">("code");
   const [dragging, setDragging] = useState(false);
+  const [hoveredSlug, setHoveredSlug] = useState<string | null>(null); // code → preview
+  const [previewSlug, setPreviewSlug] = useState<string | null>(null); // preview hover → chip
+  const [jump, setJump] = useState<JumpTarget | null>(null); // preview click → scroll code
+
+  // Resizable panes: input column width and preview height, in percent.
+  const [inputPct, setInputPct] = useState(50);
+  const [previewPct, setPreviewPct] = useState(42);
+  const [resizing, setResizing] = useState<"col" | "row" | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const outputRef = useRef<HTMLElement>(null);
+
+  const startResize = (
+    direction: "col" | "row",
+    onMove: (ev: PointerEvent) => void
+  ) => {
+    setResizing(direction);
+    const stop = () => {
+      setResizing(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", stop);
+  };
+
+  const onColResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    startResize("col", (ev) => {
+      const rect = mainRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      setInputPct(Math.min(75, Math.max(20, pct)));
+    });
+  };
+
+  const onRowResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    startResize("row", (ev) => {
+      const rect = outputRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pct = ((rect.bottom - ev.clientY) / rect.height) * 100;
+      setPreviewPct(Math.min(80, Math.max(15, pct)));
+    });
+  };
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault(); // required to allow dropping files
@@ -112,13 +155,14 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
+      <main ref={mainRef} className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Input pane */}
         <section
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
-          className="relative flex min-h-0 flex-col border-b border-neutral-200 md:border-b-0 md:border-r dark:border-neutral-800"
+          style={{ "--input-w": `${inputPct}%` } as React.CSSProperties}
+          className="relative flex min-h-0 flex-1 flex-col border-b border-neutral-200 md:w-[var(--input-w)] md:flex-none md:border-b-0 dark:border-neutral-800"
         >
           {dragging && (
             <div className="pointer-events-none absolute inset-2 z-10 grid place-items-center rounded-xl border-2 border-dashed border-sky-500 bg-sky-50/90 text-sm font-medium text-sky-700 dark:bg-sky-950/80 dark:text-sky-300">
@@ -160,56 +204,79 @@ export default function Home() {
           )}
         </section>
 
-        {/* Output pane */}
-        <section className="flex min-h-0 flex-col">
-          <div className="flex items-center border-b border-neutral-200 px-2 py-1.5 dark:border-neutral-800">
-            {(["code", "preview"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
-                  tab === t
-                    ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-800 dark:text-white"
-                    : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
-                }`}
-              >
-                {t === "code" ? "Code" : "Live preview"}
-              </button>
-            ))}
-            {result?.ok && (
-              <span className="ml-auto px-2 font-mono text-xs text-neutral-400 dark:text-neutral-500">
-                {result.value.componentName}
-              </span>
-            )}
-          </div>
+        {/* Column resizer */}
+        <div
+          onPointerDown={onColResize}
+          className="hidden w-1 shrink-0 cursor-col-resize border-l border-neutral-200 transition-colors hover:bg-sky-400/40 md:block dark:border-neutral-800"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize input pane"
+        />
 
-          <div className="min-h-0 flex-1">
-            {result === null && (
-              <Empty>Paste an SVG on the left to generate component code.</Empty>
-            )}
-            {result?.ok === false && (
-              <div className="p-6 text-sm">
-                <p className="font-medium text-red-600 dark:text-red-400">
-                  Could not parse that SVG
-                </p>
-                <p className="mt-1 font-mono text-xs text-red-500/90 dark:text-red-300/80">
-                  {result.error}
-                </p>
+        {/* Output pane: code on top, preview always in view below.
+            Hovering the code highlights the matching layer in the preview. */}
+        <section ref={outputRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {result === null && (
+            <Empty>Paste an SVG on the left to generate component code.</Empty>
+          )}
+          {result?.ok === false && (
+            <div className="p-6 text-sm">
+              <p className="font-medium text-red-600 dark:text-red-400">
+                Could not parse that SVG
+              </p>
+              <p className="mt-1 font-mono text-xs text-red-500/90 dark:text-red-300/80">
+                {result.error}
+              </p>
+            </div>
+          )}
+          {result?.ok && (
+            <>
+              <div className="min-h-0 flex-1">
+                <CodePanel
+                  key={`${framework}-${styling}`}
+                  files={result.value.files}
+                  layers={result.value.layers}
+                  onHoverLayer={setHoveredSlug}
+                  chipSlug={previewSlug}
+                  jump={jump}
+                />
               </div>
-            )}
-            {result?.ok &&
-              (tab === "code" ? (
-                <CodePanel key={`${framework}-${styling}`} files={result.value.files} />
-              ) : (
+              {/* Row resizer */}
+              <div
+                onPointerDown={onRowResize}
+                className="h-1 w-full shrink-0 cursor-row-resize border-t border-neutral-200 transition-colors hover:bg-sky-400/40 dark:border-neutral-800"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize preview pane"
+              />
+              <div
+                style={{ "--preview-h": `${previewPct}%` } as React.CSSProperties}
+                className="h-[var(--preview-h)] min-h-[120px] shrink-0"
+              >
                 <PreviewPanel
                   html={result.value.previewHtml}
                   css={result.value.previewCss}
+                  highlight={hoveredSlug}
+                  onHoverLayer={setPreviewSlug}
+                  onSelectLayer={(slug) =>
+                    setJump((prev) => ({ slug, tick: (prev?.tick ?? 0) + 1 }))
+                  }
                 />
-              ))}
-          </div>
+              </div>
+            </>
+          )}
         </section>
       </main>
+
+      {/* While resizing, block the preview iframe from swallowing pointer
+          events and keep the resize cursor everywhere. */}
+      {resizing && (
+        <div
+          className={`fixed inset-0 z-50 select-none ${
+            resizing === "col" ? "cursor-col-resize" : "cursor-row-resize"
+          }`}
+        />
+      )}
     </div>
   );
 }
