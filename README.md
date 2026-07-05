@@ -8,8 +8,6 @@ Turn **SVG exports from your design tool** into structured, scalable UI componen
 
 Paste (or drag & drop) an exported SVG, pick a framework and a styling mode, copy the generated component. Layer names, grouping and hierarchy defined in your design file are preserved: named groups become CSS classes, `data-slot`s, or dedicated React subcomponents.
 
-> **Live demo:** _add your Vercel URL here after deploying_
-
 ## Why
 
 Design tools export flat SVG markup. Dropping that straight into a codebase gives you an unmaintainable blob: no props, no styling layer, no structure. This tool converts it into an idiomatic component — parametrized, themed, and named after your layers.
