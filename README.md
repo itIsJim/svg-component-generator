@@ -84,10 +84,6 @@ SVG text ──▶ lib/xml.ts        minimal XML parser (no deps)
 
 The UI (`app/`, `components/`) is a thin layer over this pipeline; everything runs in the browser.
 
-## Deploying
-
-Standard Next.js — deploys to [Vercel](https://vercel.com) with zero configuration: import the repo and ship. Everything is statically prerendered; there are no API routes, env vars, or server dependencies.
-
 ## Contributing
 
 Issues and PRs are welcome. A good PR:
